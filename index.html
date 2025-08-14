@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>BPER Banca - Mobile Banking</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="BPER Banking">
+    <link rel="apple-touch-icon" href="https://www.bper.it/o/bper-theme/images/bper/favicon/apple-touch-icon.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+    <input type="file" id="file-importer" accept=".xls, .xlsx" style="display: none;">
+
+    <div id="edit-mode-banner">
+        <span>🕵️‍♂️ Modalità Modifica Attiva</span>
+        <button data-action="deleteAllTransactions" class="delete-all-btn">Svuota</button>
+        <button data-action="exitEditMode">Esci</button>
+    </div>
+
+    <header class="app-header">
+        <div class="header-top">
+            <div class="profile-initials" data-action="handleProfileClick">MS</div>
+            <div class="header-icons">
+                <i class="fa-solid fa-bell"></i>
+                <i class="fa-solid fa-circle-question"></i>
+            </div>
+        </div>
+        <nav class="nav-tabs">
+            <div class="nav-tab active" data-target="conti-content">Conti</div>
+            <div class="nav-tab" data-target="carte-content">Carte</div>
+            <div class="nav-tab" data-target="finanziamenti-content">Finanziamenti</div>
+            <div class="nav-tab" data-target="investimenti-content">Investimenti</div>
+            <div class="nav-tab" data-target="mutui-content">Mutui</div>
+            <div class="nav-tab" data-target="assicurazioni-content">Assicurazioni</div>
+        </nav>
+    </header>
+
+    <main id="main-content">
+        <div id="conti-content" class="content-section active-content">
+            <h3 class="account-title-outside">
+                <span data-editable="true" data-field="accountTitle"></span>
+                <i id="toggle-all-visibility" class="fa-solid fa-eye-slash toggle-icon" data-action="toggleBalanceVisibility"></i>
+            </h3>
+            <div class="account-summary">
+                <div class="account-balance">
+                    <span id="current-balance" data-editable="true" data-field="balance"></span>
+                    <i class="fa-solid fa-chevron-right arrow-icon" data-action="showAllTransactions"></i>
+                </div>
+                <p class="balance-info">Saldo disponibile al <span id="balance-date"></span><br><strong data-editable="true" data-field="accountHolder"></strong></p>
+                <div class="iban-details">
+                    <span id="iban-text" data-editable="true" data-field="iban"></span>
+                    <i data-action="copyIban" class="fa-solid fa-arrow-up-from-bracket copy-icon"></i>
+                </div>
+            </div>
+            
+            <div class="quick-actions">
+                <div class="action-item"><i class="fa-solid fa-money-bill-transfer"></i><span>Bonifico<br>ordinario</span></div>
+                <div class="action-item"><i class="fa-solid fa-mobile-screen"></i><span>Ricarica<br>Telefonica</span></div>
+                <div class="action-item"><i class="fa-solid fa-receipt"></i><span>Cbill e<br>PagoPA</span></div>
+            </div>
+            
+            <div class="loader"><i class="fas fa-spinner fa-spin"></i></div>
+
+            <div class="transactions-card-wrapper" style="display: none;">
+                <div class="card-header">
+                    <h2 class="section-title">ULTIMI MOVIMENTI</h2>
+                    <div class="header-buttons">
+                        <button data-action="importTransactions" class="add-tx-button">Importa XLS</button>
+                        <button data-action="addTransaction" class="add-tx-button" title="Aggiungi transazione manuale">+ Aggiungi</button>
+                    </div>
+                </div>
+                <div class="transactions" id="main-transactions-list" data-action="showTxDetail"></div>
+                <div class="view-all-container">
+                    <button data-action="showAllTransactions" class="view-all-button">Visualizza tutto</button>
+                </div>
+            </div>
+        </div>
+        
+        <section id="carte-content" class="content-section"><div class="placeholder-section"><i class="fa-solid fa-credit-card"></i><h3>Le tue Carte</h3><p>Gestisci limiti, pagamenti e sicurezza delle tue carte.</p></div></section>
+        <section id="finanziamenti-content" class="content-section"><div class="placeholder-section"><i class="fa-solid fa-chart-line"></i><h3>Finanziamenti</h3><p>Controlla lo stato dei tuoi prestiti e finanziamenti.</p></div></section>
+        <section id="investimenti-content" class="content-section"><div class="placeholder-section"><i class="fa-solid fa-seedling"></i><h3>Investimenti</h3><p>Monitora l'andamento del tuo portafoglio.</p></div></section>
+        <section id="mutui-content" class="content-section"><div class="placeholder-section"><i class="fa-solid fa-house-chimney"></i><h3>Mutui</h3><p>Visualizza i dettagli e le rate del tuo mutuo.</p></div></section>
+        <section id="assicurazioni-content" class="content-section"><div class="placeholder-section"><i class="fa-solid fa-shield-halved"></i><h3>Assicurazioni</h3><p>Gestisci le tue polizze e i tuoi sinistri.</p></div></section>
+    </main>
+
+    <section id="all-transactions-content">
+        <div class="all-transactions-header">
+            <i class="fa-solid fa-arrow-left back-arrow" data-action="hideAllTransactions"></i>
+            <div class="title-and-balance">
+                <h2 class="title">Movimenti Conto</h2>
+                <span class="subtitle" data-field="accountTitle"></span>
+            </div>
+        </div>
+        <div class="search-filter-section">
+            <div class="search-and-sort-container">
+                <div class="search-bar-container">
+                    <i class="fa-solid fa-search"></i>
+                    <input type="text" id="transaction-search-input" placeholder="Cerca per nome o importo">
+                    <button class="clear-search-btn">&times;</button>
+                </div>
+                <button data-action="showSortOptions" id="sort-transactions-btn" title="Ordina movimenti"><i class="fa-solid fa-arrow-up-wide-short"></i></button>
+            </div>
+            <div class="all-transactions-tabs">
+                <div class="tab active" data-filter="all">Tutti</div>
+                <div class="tab" data-filter="incomes">Entrate</div>
+                <div class="tab" data-filter="expenses">Uscite</div>
+            </div>
+        </div>
+        <div class="all-transactions-list-container">
+            <div id="all-transactions-list" class="transactions" data-action="showTxDetail"></div>
+            <div class="no-results-message"><i class="fa-solid fa-box-open"></i><p>Nessun movimento trovato</p></div>
+        </div>
+    </section>
+
+    <nav class="bottom-nav">
+        <a href="#" class="nav-item active">
+            <i class="fa-solid fa-house"></i>
+            <span>Home</span>
+        </a>
+        <a href="#" class="nav-item">
+            <i class="fa-solid fa-right-left"></i>
+            <span>Paga</span>
+        </a>
+        <a href="#" class="nav-item">
+            <i class="fa-solid fa-table-cells"></i>
+            <span>Prodotti</span>
+        </a>
+        <a href="#" class="nav-item">
+            <i class="fa-regular fa-gem"></i>
+            <span>Lifestyle</span>
+        </a>
+        <a href="#" class="nav-item">
+            <i class="fa-solid fa-headset"></i>
+            <span>Hey BPER</span>
+        </a>
+    </nav>
+
+    <div id="modal-backdrop"></div>
+    <div id="transaction-detail-popup" class="popup-sheet"></div>
+    <div id="sort-options-popup" class="popup-sheet"></div>
+    <div id="toast-notification" class="toast-notification"></div>
+
+    <template id="transaction-item-template">
+        <div class="transaction-item">
+            <div class="transaction-date-block">
+                <span class="date-day"></span>
+                <span class="date-month"></span>
+            </div>
+            <div class="transaction-info">
+                <div class="transaction-name" data-editable="true" data-field="name"></div>
+                <div class="transaction-type" data-editable="true" data-field="type"></div>
+            </div>
+            <div class="transaction-amount" data-editable="true" data-field="amount"></div>
+            <div class="delete-icon-wrapper">
+                <i class="fa-solid fa-trash-can" data-action="deleteTransaction"></i>
+            </div>
+        </div>
+    </template>
+
+    <script src="script.js"></script>
+</body>
+</html>
