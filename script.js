@@ -163,6 +163,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.showToast('Nuova transazione aggiunta!');
             },
             importTransactions() { this.DOM.fileImporter.click(); },
+            exportTransactions() {
+                const transactions = this.state.appData.transactions;
+                if (transactions.length === 0) {
+                    this.showToast('Nessuna transazione da esportare.', 'warning');
+                    return;
+                }
+                const header = ['Data operazione', 'Data valuta', 'Descrizione', 'Entrate', 'Uscite', 'Categoria'];
+                const data = transactions.map(tx => {
+                    const isIncome = tx.amount > 0;
+                    return [
+                        new Date(tx.accountingDate).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric'}),
+                        new Date(tx.currencyDate).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric'}),
+                        tx.name,
+                        isIncome ? tx.amount.toFixed(2).replace('.', ',') : '',
+                        !isIncome ? Math.abs(tx.amount).toFixed(2).replace('.', ',') : '',
+                        tx.type 
+                    ];
+                });
+                const sheetData = [header, ...data];
+                const worksheet = XLSX.utils.aoa_to_sheet(sheetData);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, 'Movimenti Conto');
+                XLSX.writeFile(workbook, 'BPER_movimenti_export.xlsx');
+                this.showToast('Transazioni esportate con successo!');
+            },
             deleteAllTransactions() {
                 if (!confirm('ATTENZIONE: Stai per eliminare TUTTE le transazioni. Sei sicuro?')) return;
                 const confirmationText = prompt('Questa azione è irreversibile. Scrivi "ELIMINA" in maiuscolo per confermare.');
@@ -201,7 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             },
             showTxDetail(e) {
-                if (this.state.editMode) return;
+                if (this.state.editMode && e.target.closest('[data-action="deleteTransaction"]')) return;
                 const transactionItem = e.target.closest('.transaction-item');
                 if (transactionItem) {
                     const transaction = this.state.appData.transactions.find(t => t.id === transactionItem.dataset.id);
@@ -244,22 +269,23 @@ document.addEventListener('DOMContentLoaded', () => {
         
         parseItalianDate(dateString) {
             if (!dateString || typeof dateString !== 'string') return null;
-            const monthMap = {
-                'gen': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'mag': 4, 'giu': 5,
-                'lug': 6, 'ago': 7, 'set': 8, 'ott': 9, 'nov': 10, 'dic': 11
-            };
-            const parts = dateString.toLowerCase().split(' ');
+            if (dateString.includes('/')) {
+                const parts = dateString.split('/');
+                if (parts.length === 3) {
+                    const day = parseInt(parts[0], 10);
+                    const month = parseInt(parts[1], 10) - 1;
+                    const year = parseInt(parts[2], 10);
+                    if (!isNaN(day) && !isNaN(month) && !isNaN(year)) return new Date(year, month, day);
+                }
+            }
+            const monthMap = { 'gen': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'mag': 4, 'giu': 5, 'lug': 6, 'ago': 7, 'set': 8, 'ott': 9, 'nov': 10, 'dic': 11, 'gennaio': 0, 'febbraio': 1, 'marzo': 2, 'aprile': 3, 'maggio': 4, 'giugno': 5, 'luglio': 6, 'agosto': 7, 'settembre': 8, 'ottobre': 9, 'novembre': 10, 'dicembre': 11 };
+            const parts = dateString.toLowerCase().replace('.', '').split(' ');
             if (parts.length < 3) return null;
-
-            const monthStr = parts[1].substring(0, 3);
+            const monthStr = parts[1];
             const month = monthMap[monthStr];
-            
             const day = parseInt(parts[0], 10);
             const year = parseInt(parts[2], 10);
-
-            if (!isNaN(day) && month !== undefined && !isNaN(year)) {
-                return new Date(year, month, day);
-            }
+            if (!isNaN(day) && month !== undefined && !isNaN(year)) return new Date(year, month, day);
             return null;
         },
 
@@ -268,21 +294,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 String(row).toLowerCase().includes('data operazione') && String(row).toLowerCase().includes('descrizione')
             );
 
-            if (headerIndex === -1) {
-                throw new Error("Intestazione non trovata. Cerca 'Data Operazione' e 'Descrizione'.");
-            }
-
+            if (headerIndex === -1) throw new Error("Intestazione non trovata. Cerca 'Data Operazione' e 'Descrizione'.");
+            
             const headerRow = rows[headerIndex].map(h => String(h).toLowerCase());
             const colMap = {
                 date: headerRow.findIndex(h => h.includes('data operazione')),
                 description: headerRow.findIndex(h => h.includes('descrizione')),
                 income: headerRow.findIndex(h => h.includes('entrate')),
-                outcome: headerRow.findIndex(h => h.includes('uscite'))
+                outcome: headerRow.findIndex(h => h.includes('uscite')),
+                category: headerRow.findIndex(h => h.includes('categoria'))
             };
 
-            if (colMap.date === -1 || colMap.description === -1) {
-                throw new Error("Colonne 'Data Operazione' o 'Descrizione' non trovate nell'intestazione.");
-            }
+            if (colMap.date === -1 || colMap.description === -1) throw new Error("Colonne 'Data Operazione' o 'Descrizione' non trovate.");
             
             const transactionRows = rows.slice(headerIndex + 1);
             const rawTransactions = [];
@@ -290,12 +313,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             for (const row of transactionRows) {
                 if (!Array.isArray(row) || row.length === 0 || !row.some(cell => cell)) continue;
-
                 const rowStr = row.join(',').toLowerCase();
                 if (rowStr.includes('totale movimenti') || rowStr.includes('saldo al')) break;
 
                 const dateCandidate = row[colMap.date];
-                const isNewTransaction = dateCandidate && (dateCandidate instanceof Date || String(dateCandidate).match(/\d{1,2}\s\w+\s\d{4}/));
+                const isNewTransaction = dateCandidate && (dateCandidate instanceof Date || String(dateCandidate).match(/\d{1,2}\s\w+\s\d{4}|\d{1,2}\/\d{1,2}\/\d{4}/));
                 
                 if (isNewTransaction) {
                     if (currentTransaction) rawTransactions.push(currentTransaction);
@@ -303,7 +325,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         dataOperazione: dateCandidate,
                         descrizione: String(row[colMap.description] || '').replace(/"/g, '').trim(),
                         entrate: colMap.income > -1 ? row[colMap.income] : '',
-                        uscite: colMap.outcome > -1 ? row[colMap.outcome] : ''
+                        uscite: colMap.outcome > -1 ? row[colMap.outcome] : '',
+                        categoria: colMap.category > -1 ? String(row[colMap.category] || '') : ''
                     };
                 } else if (currentTransaction) {
                     const continuationText = String(row[colMap.description] || '').replace(/"/g, '').trim();
@@ -317,27 +340,49 @@ document.addEventListener('DOMContentLoaded', () => {
             const finalTransactions = rawTransactions.map(t => {
                 const entrate = parseFloat(String(t.entrate).replace(',', '.')) || 0;
                 const uscite = parseFloat(String(t.uscite).replace(',', '.')) || 0;
-                const importo = entrate !== 0 ? entrate : (uscite !== 0 ? -Math.abs(uscite) : 0);
-                
-                let data = t.dataOperazione instanceof Date ? t.dataOperazione : this.parseItalianDate(t.dataOperazione);
+                const importo = entrate || uscite;
 
+                let data = t.dataOperazione instanceof Date ? t.dataOperazione : this.parseItalianDate(t.dataOperazione);
                 if (!data || isNaN(data.getTime())) {
-                    console.error("Data non valida per la transazione, assegnata data odierna:", t);
+                    console.error("Data non valida, assegnata data odierna:", t);
                     data = new Date();
                 }
 
                 const nome = t.descrizione.replace(/\s+/g, ' ').trim();
                 const key = `${data.toLocaleDateString('it-IT')}_${importo.toFixed(2)}_${nome}`;
                 if (existingTxKeys.has(key)) return null;
+                
+                let categoriaApp = 'default';
+                const catOriginale = t.categoria.toLowerCase();
+                const descOriginale = t.descrizione.toLowerCase();
+
+                if (catOriginale.includes('stipendio') || descOriginale.includes('emolumenti')) {
+                    categoriaApp = 'salary';
+                } else if (catOriginale.includes('versamento')) {
+                    categoriaApp = 'transfer_in';
+                } else if (
+                    catOriginale.includes('bonifico') ||
+                    catOriginale.includes('prelievo') ||
+                    catOriginale.includes('commission') ||
+                    catOriginale.includes('competenze') ||
+                    catOriginale.includes('rata') ||
+                    catOriginale.includes('pagamento') ||
+                    catOriginale.includes('bancomat')
+                ) {
+                    categoriaApp = 'payment';
+                }
+
+                const tipoTransazione = t.categoria.trim() ? t.categoria.trim().toUpperCase() : (importo < 0 ? 'PAGAMENTO' : 'ACCREDITO');
+
                 return {
                     id: 'imp_' + Date.now() + Math.random(),
                     accountingDate: data,
                     currencyDate: data,
                     name: nome,
-                    type: importo < 0 ? 'ADDEBITO' : 'ACCREDITO',
+                    type: tipoTransazione,
                     amount: parseFloat(importo.toFixed(2)),
                     details: 'Importato da file',
-                    category: 'payment'
+                    category: categoriaApp
                 };
             }).filter(Boolean);
             return finalTransactions;
@@ -416,37 +461,120 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         },
+
         saveOnBlur(e) {
-            const el = e.target, f = el.dataset.field, i = el.closest('.transaction-item'); let n = el.innerText;
-            if (i) {
-                const id = i.dataset.id; const tx = this.state.appData.transactions.find(t => t.id === id);
-                if (!tx) return;
-                if (f === 'amount') {
-                    const o = tx.amount;
-                    n = parseFloat(n.replace(/[^0-9,-]+/g, "").replace(',', '.')) || 0;
-                    this.state.appData.balance += (n - o);
-                }
-                tx[f] = n;
-            } else {
-                if (f === 'balance') n = parseFloat(n.replace(/[^0-9,-]+/g, "").replace(',', '.')) || 0;
-                this.state.appData[f] = n;
+            const el = e.target;
+            const field = el.dataset.field;
+            let newValue = el.innerText;
+        
+            const listItem = el.closest('.transaction-item');
+            const detailPopup = el.closest('#transaction-detail-popup');
+            let txId = null;
+        
+            if (listItem) {
+                txId = listItem.dataset.id;
+            } else if (detailPopup) {
+                txId = detailPopup.dataset.currentTxId;
             }
+        
+            if (txId) { // Se stiamo modificando una transazione (da lista o da popup)
+                const tx = this.state.appData.transactions.find(t => t.id === txId);
+                if (!tx) return;
+        
+                const originalAmount = tx.amount;
+        
+                switch (field) {
+                    case 'amount':
+                        // Logica migliorata per riconoscere + e -
+                        const cleanedString = newValue.replace(/\./g, '').replace(',', '.').replace(/€/g, '').trim();
+                        const parsedAmount = parseFloat(cleanedString);
+                        tx.amount = isNaN(parsedAmount) ? 0 : parsedAmount;
+                        this.state.appData.balance += (tx.amount - originalAmount); // Aggiorna il saldo totale
+                        break;
+                    case 'name':
+                    case 'type':
+                    case 'details':
+                        tx[field] = newValue;
+                        break;
+                    case 'accountingDate':
+                    case 'currencyDate':
+                        const parsedDate = this.parseItalianDate(newValue);
+                        if (parsedDate && !isNaN(parsedDate.getTime())) {
+                            tx[field] = parsedDate;
+                        } else {
+                            this.showToast('Formato data non valido.', 'error');
+                            el.innerText = new Date(tx[field]).toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' }); // Ripristina
+                        }
+                        break;
+                }
+        
+            } else { // Se stiamo modificando un campo generale (es. saldo, nome conto)
+                if (field === 'balance') {
+                    this.state.appData.balance = parseFloat(newValue.replace(/[^0-9,-]+/g, "").replace(',', '.')) || 0;
+                } else {
+                    this.state.appData[field] = newValue;
+                }
+            }
+        
             this.saveData();
             this.updateUIFromData();
             this.render();
+            if (this.state.activePopup === this.DOM.txDetailPopup) {
+                const updatedTx = this.state.appData.transactions.find(t => t.id === txId);
+                if(updatedTx) this.renderTransactionDetail(updatedTx);
+            }
         },
+        
         showToast(message, type = 'success') {
             this.DOM.toast.textContent = message;
             this.DOM.toast.style.backgroundColor = type === 'error' ? '#ff3b30' : 'rgba(0,0,0,0.8)';
             this.DOM.toast.classList.add('show');
             setTimeout(() => this.DOM.toast.classList.remove('show'), 3000);
         },
+
         renderTransactionDetail(tx) {
-            const a = tx.amount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
-            const c = `<div class="popup-handle"></div><div class="transaction-detail-wrapper"><div class="detail-header"><div class="detail-category-icon"><i class="${this.config.categoryIcons[tx.category] || this.config.categoryIcons['default']}"></i></div><div class="detail-amount ${tx.amount > 0 ? 'positive' : 'negative'}">${a}</div><div class="detail-name">${tx.name}</div></div><div class="detail-info-block"><div class="detail-info-row"><span>Causale</span><span>${tx.details}</span></div><div class="detail-info-row"><span>Data contabile</span><span>${new Date(tx.accountingDate).toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div><div class="detail-info-row"><span>Data valuta</span><span>${new Date(tx.currencyDate).toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div><div class="detail-info-row"><span>Tipo movimento</span><span>${tx.type}</span></div></div></div>`;
-            this.DOM.txDetailPopup.innerHTML = c;
+            this.DOM.txDetailPopup.dataset.currentTxId = tx.id; // Associa l'ID al popup
+        
+            const amountFormatted = tx.amount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
+            const accountingDateFormatted = new Date(tx.accountingDate).toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' });
+            const currencyDateFormatted = new Date(tx.currencyDate).toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' });
+        
+            const content = `
+                <div class="popup-handle"></div>
+                <div class="transaction-detail-wrapper">
+                    <div class="detail-header">
+                        <div class="detail-category-icon"><i class="${this.config.categoryIcons[tx.category] || this.config.categoryIcons['default']}"></i></div>
+                        <div class="detail-amount ${tx.amount > 0 ? 'positive' : 'negative'}" data-editable="true" data-field="amount">${amountFormatted}</div>
+                        <div class="detail-name" data-editable="true" data-field="name">${tx.name}</div>
+                    </div>
+                    <div class="detail-info-block">
+                        <div class="detail-info-row">
+                            <span>Causale</span>
+                            <span data-editable="true" data-field="details">${tx.details}</span>
+                        </div>
+                        <div class="detail-info-row">
+                            <span>Data contabile</span>
+                            <span data-editable="true" data-field="accountingDate">${accountingDateFormatted}</span>
+                        </div>
+                        <div class="detail-info-row">
+                            <span>Data valuta</span>
+                            <span data-editable="true" data-field="currencyDate">${currencyDateFormatted}</span>
+                        </div>
+                        <div class="detail-info-row">
+                            <span>Tipo movimento</span>
+                            <span data-editable="true" data-field="type">${tx.type}</span>
+                        </div>
+                    </div>
+                </div>`;
+            this.DOM.txDetailPopup.innerHTML = content;
+        
+            if (this.state.editMode) {
+                this.setEditableState(true, this.DOM.txDetailPopup);
+            }
+        
             this.showPopup(this.DOM.txDetailPopup);
         },
+        
         showPopup(el) { 
             this.state.activePopup = el;
             this.DOM.body.classList.add('modal-open'); 
@@ -455,6 +583,9 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         hidePopup(el) { 
             if (!el) return;
+            if (el === this.DOM.txDetailPopup) {
+                el.removeAttribute('data-current-tx-id');
+            }
             this.state.activePopup = null;
             this.DOM.body.classList.remove('modal-open'); 
             this.DOM.modalBackdrop.classList.remove('active'); 

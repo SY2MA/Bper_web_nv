@@ -70,6 +70,7 @@
                 <div class="card-header">
                     <h2 class="section-title">ULTIMI MOVIMENTI</h2>
                     <div class="header-buttons">
+                        <button data-action="exportTransactions" class="add-tx-button">Esporta XLS</button>
                         <button data-action="importTransactions" class="add-tx-button">Importa XLS</button>
                         <button data-action="addTransaction" class="add-tx-button" title="Aggiungi transazione manuale">+ Aggiungi</button>
                     </div>
@@ -118,26 +119,11 @@
     </section>
 
     <nav class="bottom-nav">
-        <a href="#" class="nav-item active">
-            <i class="fa-solid fa-house"></i>
-            <span>Home</span>
-        </a>
-        <a href="#" class="nav-item">
-            <i class="fa-solid fa-right-left"></i>
-            <span>Paga</span>
-        </a>
-        <a href="#" class="nav-item">
-            <i class="fa-solid fa-table-cells"></i>
-            <span>Prodotti</span>
-        </a>
-        <a href="#" class="nav-item">
-            <i class="fa-regular fa-gem"></i>
-            <span>Lifestyle</span>
-        </a>
-        <a href="#" class="nav-item">
-            <i class="fa-solid fa-headset"></i>
-            <span>Hey BPER</span>
-        </a>
+        <a href="#" class="nav-item active"><i class="fa-solid fa-house"></i><span>Home</span></a>
+        <a href="#" class="nav-item"><i class="fa-solid fa-right-left"></i><span>Paga</span></a>
+        <a href="#" class="nav-item"><i class="fa-solid fa-table-cells"></i><span>Prodotti</span></a>
+        <a href="#" class="nav-item"><i class="fa-regular fa-gem"></i><span>Lifestyle</span></a>
+        <a href="#" class="nav-item"><i class="fa-solid fa-headset"></i><span>Hey BPER</span></a>
     </nav>
 
     <div id="modal-backdrop"></div>
@@ -156,9 +142,7 @@
                 <div class="transaction-type" data-editable="true" data-field="type"></div>
             </div>
             <div class="transaction-amount" data-editable="true" data-field="amount"></div>
-            <div class="delete-icon-wrapper">
-                <i class="fa-solid fa-trash-can" data-action="deleteTransaction"></i>
-            </div>
+            <div class="delete-icon-wrapper"><i class="fa-solid fa-trash-can" data-action="deleteTransaction"></i></div>
         </div>
     </template>
 
